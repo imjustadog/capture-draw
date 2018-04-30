@@ -14,20 +14,18 @@ import os
 import threading
 from datetime import timedelta
 from matplotlib.dates import SecondLocator, MinuteLocator, HourLocator, DateFormatter
-from datasender import TcpServer
-from dataparse import GetData
+from pcierecv import PCIeHost
 
 Y_MAX = 10
 Y_MIN = 1
 INTERVAL = 1
 INTERVAL_COUNT = 60
-MAXCOUNTER = 48
+MAXCOUNTER = 500
 
 send_lock = threading.Lock()
 
 
 class MplCanvas(FigureCanvas):
-    filepath = ''
     clickdate = []
 
     def __init__(self):
@@ -37,7 +35,7 @@ class MplCanvas(FigureCanvas):
         self.ax_data.set_xlabel("time/s")
         self.ax_data.set_ylabel('value')
         # self.ax_data.legend()
-        # self.ax_data.set_ylim(-5,5)
+        # self.ax_data.set_ylim(0,100)
         # self.ax_data.xaxis.set_major_locator(MultipleLocator(100))  # every minute is a major locator
         # self.ax_data.xaxis.set_minor_locator(MultipleLocator(10)) # every 10 second is a minor locator
         
@@ -45,19 +43,17 @@ class MplCanvas(FigureCanvas):
         self.ax_freq.set_ylabel('frequency')
         # self.ax_freq.legend()
         # self.ax_freq.set_ylim(Y_MIN, Y_MAX)
-        self.ax_freq.xaxis.set_major_locator(HourLocator([3, 6, 9, 12, 15, 18, 21]))  # every minute is a major locator
-        #self.ax_freq.xaxis.set_minor_locator(SecondLocator([10, 20, 30, 40, 50]))  # every 10 second is a minor locator
-        self.ax_freq.xaxis.set_major_formatter(DateFormatter('%H:%M:%S'))  # tick label formatter
+        # self.ax_freq.xaxis.set_major_locator(HourLocator([3, 6, 9, 12, 15, 18, 21]))  # every minute is a major locator
+        # self.ax_freq.xaxis.set_minor_locator(SecondLocator([10, 20, 30, 40, 50]))  # every 10 second is a minor locator
+        # self.ax_freq.xaxis.set_major_formatter(DateFormatter('%H:%M:%S'))  # tick label formatter
         
         self.fig.subplots_adjust(top=0.92, bottom=0.13, left=0.10, right=0.95)
 
-        self.curveObj_data = None
+        self.curve = {}
+        self.point = {}
+
         self.clickObj_data = None
         self.annotate_data = None
-        self.pointObj_data = None
-
-        self.clickObj_freq = None
-        self.annotate_freq = None
 
         '''
         self.curveObj_freq = None  # draw object
@@ -70,68 +66,70 @@ class MplCanvas(FigureCanvas):
         FigureCanvas.updateGeometry(self)
 
     def plot_realtime(self, datalist, counter):
-        self.clear_freq_annotate()
+        self.clear_data_annotate()
         for x in datalist:
-            if x['freqcurve'] is None:
-                # create draw object once
-                x['freqcurve'], = self.ax_freq.plot(
-                                                    np.array(x['datax']),
-                                                    np.array(x['datay']),
-                                                    '-',
-                                                    picker=False,
-                                                    linewidth=2.5
-                                                    )
+            if x['enabled']:
+                xa = x
+                if self.curve[x['device']] is None:
+                    # create draw object once
+                    self.curve[x['device']], = self.ax_data.plot(
+                                                        np.array(x['datax']),
+                                                        np.array(x['datay']),
+                                                        '-',
+                                                        picker=False,
+                                                        linewidth=2.5
+                                                        )
 
-                x['freqpoint'], = self.ax_freq.plot(
-                                                    np.array(x['datax']),
-                                                    np.array(x['datay']),
-                                                    'o',
-                                                    picker=5,
-                                                    mew=0
-                                                    )
-            else:
-                # update data of draw object
-                x['freqcurve'].set_data(np.array(x['datax']), np.array(x['datay']))
-                x['freqpoint'].set_data(np.array(x['datax']), np.array(x['datay']))
+                    self.point[x['device']], = self.ax_data.plot(
+                                                        np.array(x['datax']),
+                                                        np.array(x['datay']),
+                                                        'o',
+                                                        picker=5,
+                                                        mew=0
+                                                        )
+                else:
+                    # update data of draw object
+                    self.curve[x['device']].set_data(np.array(x['datax']), np.array(x['datay']))
+                    self.point[x['device']].set_data(np.array(x['datax']), np.array(x['datay']))
         # update limit of X axis,to make sure it can move
-        if counter >= MAXCOUNTER:
-            self.ax_freq.set_xlim(x['datax'][0], x['datax'][-1])
-        else:
-            self.ax_freq.set_xlim(x['datax'][0], x['datax'][0]+timedelta(hours=24))
-        self.ax_freq.set_ylim(3, 7)
-        ticklabels = self.ax_freq.xaxis.get_ticklabels()
+        # if counter >= MAXCOUNTER:
+        #     self.ax_data.set_xlim(xa['datax'][0], xa['datax'][-1])
+        # else:
+        #     self.ax_data.set_xlim(xa['datax'][0], xa['datax'][0]+500)
+        ticklabels = self.ax_data.xaxis.get_ticklabels()
         for tick in ticklabels:
             tick.set_rotation(25)
         self.draw()
 
     def plot_history(self, datalist):
-        self.clear_freq_annotate()
+        self.clear_data_annotate()
         for x in datalist:
-            if x['freqcurve'] is None:
-                # create draw object once
-                x['freqcurve'], = self.ax_freq.plot(
-                                                    np.array(x['datax']),
-                                                    np.array(x['datay']),
-                                                    '-',
-                                                    picker=False,
-                                                    linewidth=2.5
-                                                    )
+            if x['enabled']:
+                xa = x
+                if self.curve[x['device']] is None:
+                    # create draw object once
+                    self.curve[x['device']], = self.ax_data.plot(
+                                                        np.array(x['datax']),
+                                                        np.array(x['datay']),
+                                                        '-',
+                                                        picker=False,
+                                                        linewidth=2.5
+                                                        )
 
-                x['freqpoint'], = self.ax_freq.plot(
-                                                    np.array(x['datax']),
-                                                    np.array(x['datay']),
-                                                    'o',
-                                                    picker=5,
-                                                    mew=0
-                                                    )
-            else:
-                # update data of draw object
-                x['freqcurve'].set_data(np.array(x['datax']), np.array(x['datay']))
-                x['freqpoint'].set_data(np.array(x['datax']), np.array(x['datay']))
+                    self.point[x['device']], = self.ax_data.plot(
+                                                        np.array(x['datax']),
+                                                        np.array(x['datay']),
+                                                        'o',
+                                                        picker=5,
+                                                        mew=0
+                                                        )
+                else:
+                    # update data of draw object
+                    self.curve[x['device']].set_data(np.array(x['datax']), np.array(x['datay']))
+                    self.point[x['device']].set_data(np.array(x['datax']), np.array(x['datay']))
         # update limit of X axis,to make sure it can move
-        self.ax_freq.set_xlim(x['datax'][0], x['datax'][-1])
-        self.ax_freq.set_ylim(3, 7)
-        ticklabels = self.ax_freq.xaxis.get_ticklabels()
+        self.ax_data.set_xlim(xa['datax'][0], xa['datax'][-1])
+        ticklabels = self.ax_data.xaxis.get_ticklabels()
         for tick in ticklabels:
             tick.set_rotation(25)
         self.draw()
@@ -139,26 +137,26 @@ class MplCanvas(FigureCanvas):
     def onclick(self, event):
         xdata = event.artist.get_xdata()[event.ind][0]
         ydata = event.artist.get_ydata()[event.ind][0]
-        for x in self.datalist:
-            if event.artist == x['freqpoint']:
-                if self.clickObj_freq is None:
-                    self.clickObj_freq, = self.ax_freq.plot(xdata, ydata, '*', markersize=15, mew=0)
+        for x in self.point:
+            if event.artist == x:
+                if self.clickObj_data is None:
+                    self.clickObj_data, = self.ax_data.plot(xdata, ydata, '*', markersize=15, mew=0)
                 else:
-                    self.clickObj_freq.set_data(xdata, ydata)
+                    self.clickObj_data.set_data(xdata, ydata)
 
-                self.clear_freq_annotate()
+                self.clear_data_annotate()
 
                 str_datay = str(round(ydata, 2))
-                self.annotate_freq = self.ax_freq.annotate(str_datay, xy=(xdata, ydata))
+                self.annotate_data = self.ax_data.annotate(str_datay, xy=(xdata, ydata))
                 break
 
-    def clear_freq_annotate(self):
-        if self.clickObj_freq is not None:
-            self.clickObj_freq.remove()
-            self.clickObj_freq = None
-        if self.annotate_freq is not None:
-            self.annotate_freq.remove()
-            self.annotate_freq = None
+    def clear_data_annotate(self):
+        if self.annotate_data is not None:
+            self.annotate_data.remove()
+            self.annotate_data = None
+        if self.clickObj_data is not None:
+            self.clickObj_data.remove()
+            self.clickObj_data = None
 
 
 class MplCanvasWrapper(QtGui.QWidget):
@@ -168,9 +166,8 @@ class MplCanvasWrapper(QtGui.QWidget):
         pyplot.style.use('bmh')
         QtGui.QWidget.__init__(self, parent)
 
-        self.server = TcpServer()
         self.canvas = MplCanvas()
-        self.cap_data = GetData()
+        self.host = PCIeHost()
 
         self.vbl = QtGui.QVBoxLayout()
         self.ntb = NavigationToolbar(self.canvas, parent)
@@ -180,29 +177,38 @@ class MplCanvasWrapper(QtGui.QWidget):
 
         self.counter = 0
         self.canvas.cid = self.canvas.fig.canvas.mpl_connect('pick_event', self.canvas.onclick)
+        self.host.cap_data.signal_getrealtimedata.connect(self.displayrealtimedata)
+        self.host.cap_data.signal_gethistorydata.connect(self.displayrealhistorydata)
 
     def startPlot(self):
         if self.canvas.cid is not None:
             self.canvas.fig.canvas.mpl_disconnect(self.canvas.cid)
-        for x in self.cap_data.datalist:
+        for x in self.host.cap_data.datalist:
+            self.canvas.curve[x['device']] = None
+            self.canvas.point[x['device']] = None
             x['datay'] = []
             x['datax'] = []
         self.counter = 0
-        self.TcpServer.generating = True
+        self.host.generating = True
 
     def pausePlot(self):
         self.canvas.cid = self.canvas.fig.canvas.mpl_connect('pick_event', self.canvas.onclick)
-        self.TcpServer.generating = False
+        self.host.generating = False
 
-    def displayrealtimedata(self):
-        self.canvas.plot_realtime(self.cap_data.datalist, self.counter)
-        if self.counter >= MAXCOUNTER:
-            for x in self.cap_data.datalist:
-                if x['enabled']:
-                    x['datax'].pop(0)
-                    x['datay'].pop(0)
-                else:
-                    self.counter += 1
-
-    def displayhistorydata(self, datechoosed, channelchoosed):
+    def gethistorydata(self, path):
         pass
+
+    @QtCore.pyqtSlot(list)
+    def displayrealtimedata(self, datalist):
+        self.canvas.plot_realtime(datalist, self.counter)
+        # if self.counter >= MAXCOUNTER:
+        #     for x in datalist:
+        #         if x['enabled']:
+        #             x['datax'].pop(0)
+        #             x['datay'].pop(0)
+        # else:
+        #     self.counter += 1
+
+    @QtCore.pyqtSlot(list)
+    def displayrealhistorydata(self, datalist):
+        self.canvas.plot_history(datalist)

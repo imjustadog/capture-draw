@@ -28,6 +28,7 @@ class TcpServer:
             print msg
 
     def startthread(self):
+        self.__exit = False
         self.tData = threading.Thread(name="dataGenerator", target=self.receivedata)
         self.tData.start()
 
@@ -37,6 +38,8 @@ class TcpServer:
 
     def receivedata(self):
         while True:
+            if self.__exit:
+                break
             try:
                 tcpCliSock, addr = self.tcpSerSock.accept()
             except error, msg:

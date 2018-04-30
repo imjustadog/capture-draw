@@ -35,6 +35,14 @@ class Code_MainWindow(Ui_MainWindow):
         super(Code_MainWindow, self).__init__(parent)
         self.setupUi(self)
 
+        self.cmdlnkbtn_realrhis.setText(_translate("MainWindow", "查看历史", None))
+        self.dateEdit.hide()
+        self.lbl_choosedate.hide()
+        self.lbl_choosedate_2.hide()
+        self.comboBox_chselect.hide()
+        self.btn_showhis.hide()
+        self.mplCanvas.startPlot()
+
         self.cmdlnkbtn_realrhis.clicked.connect(self.realtimeorhistory)
         self.btn_showhis.clicked.connect(self.getDate)
         self.dateEdit.setDate(QtCore.QDate.currentDate())
@@ -42,14 +50,13 @@ class Code_MainWindow(Ui_MainWindow):
         global filepath
         path = filepath.split("\\")
         path = [x + os.path.sep for x in path]
-        path = ''.join(path)
-        self.mplCanvas.canvas.filepath = path
+        filepath = ''.join(path)
 
         global datechoosed
         datechoosed = QtCore.QDate.currentDate()
 
-        self.OpenServer()
-        self.mplCanvas.server.startthread()
+        # self.OpenServer()
+        self.mplCanvas.host.startthread()
     
     def realtimeorhistory(self):
         if(self.cmdlnkbtn_realrhis.text().toUtf8() == "实时显示"):
@@ -74,9 +81,9 @@ class Code_MainWindow(Ui_MainWindow):
        
     def releasePlot(self):
         '''stop and release thread'''
-        self.mplCanvas.server.releasethread()
+        self.mplCanvas.host.releasethread()
 
-    def closeEvent(self,event):
+    def closeEvent(self, event):
         result = QtGui.QMessageBox.question(self,
                       "Confirm Exit...",
                       "Are you sure you want to exit ?",
@@ -90,15 +97,21 @@ class Code_MainWindow(Ui_MainWindow):
     def OpenServer(self):
         global serverIP
         global serverPort
-        self.mplCanvas.server.setremote(hostIP, hostPort)
-        self.mplCanvas.server.open()
+        self.mplCanvas.host.setremote(hostIP, hostPort)
+        self.mplCanvas.host.open()
 
-    def getDate(self):
+    def getDate(self):  # show history data
         global datechoosed
         global channelchoosed
+        global filepath
         channelchoosed = self.comboBox_chselect.currentText()
         datechoosed = self.dateEdit.date().toString('yyyy-MM-dd')
-        self.mplCanvas.canvas.displayhistorydata(datechoosed, channelchoosed)
+        dates = datechoosed.split('-')
+        year = dates[0]
+        month = str(int(dates[1]))
+        day = dates[2]
+        path = day
+        self.mplCanvas.gethistorydata(path)
 
 if __name__ == "__main__":
     import sys
@@ -107,4 +120,4 @@ if __name__ == "__main__":
     app = QtGui.QApplication(sys.argv)
     ui_main = Code_MainWindow()
     ui_main.show()
-sys.exit(app.exec_())
+    sys.exit(app.exec_())

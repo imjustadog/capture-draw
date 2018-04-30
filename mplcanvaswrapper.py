@@ -20,7 +20,7 @@ Y_MAX = 10
 Y_MIN = 1
 INTERVAL = 1
 INTERVAL_COUNT = 60
-MAXCOUNTER = 500
+MAXCOUNTER = 100
 
 send_lock = threading.Lock()
 
@@ -67,6 +67,7 @@ class MplCanvas(FigureCanvas):
 
     def plot_realtime(self, datalist, counter):
         self.clear_data_annotate()
+        self.clear_data_starpoint()
         for x in datalist:
             if x['enabled']:
                 xa = x
@@ -77,7 +78,7 @@ class MplCanvas(FigureCanvas):
                                                         np.array(x['datay']),
                                                         '-',
                                                         picker=False,
-                                                        linewidth=2.5
+                                                        linewidth=1
                                                         )
 
                     self.point[x['device']], = self.ax_data.plot(
@@ -85,6 +86,7 @@ class MplCanvas(FigureCanvas):
                                                         np.array(x['datay']),
                                                         'o',
                                                         picker=5,
+                                                        markersize=3,
                                                         mew=0
                                                         )
                 else:
@@ -93,9 +95,9 @@ class MplCanvas(FigureCanvas):
                     self.point[x['device']].set_data(np.array(x['datax']), np.array(x['datay']))
         # update limit of X axis,to make sure it can move
         # if counter >= MAXCOUNTER:
-        #     self.ax_data.set_xlim(xa['datax'][0], xa['datax'][-1])
+        #      self.ax_data.set_xlim(xa['datax'][0], xa['datax'][-1])
         # else:
-        #     self.ax_data.set_xlim(xa['datax'][0], xa['datax'][0]+500)
+        #      self.ax_data.set_xlim(xa['datax'][0], xa['datax'][0] + MAXCOUNTER)
         ticklabels = self.ax_data.xaxis.get_ticklabels()
         for tick in ticklabels:
             tick.set_rotation(25)
@@ -103,6 +105,7 @@ class MplCanvas(FigureCanvas):
 
     def plot_history(self, datalist):
         self.clear_data_annotate()
+        self.clear_data_starpoint()
         for x in datalist:
             if x['enabled']:
                 xa = x
@@ -113,7 +116,7 @@ class MplCanvas(FigureCanvas):
                                                         np.array(x['datay']),
                                                         '-',
                                                         picker=False,
-                                                        linewidth=2.5
+                                                        linewidth=1
                                                         )
 
                     self.point[x['device']], = self.ax_data.plot(
@@ -121,6 +124,7 @@ class MplCanvas(FigureCanvas):
                                                         np.array(x['datay']),
                                                         'o',
                                                         picker=5,
+                                                        markersize=3,
                                                         mew=0
                                                         )
                 else:
@@ -137,26 +141,28 @@ class MplCanvas(FigureCanvas):
     def onclick(self, event):
         xdata = event.artist.get_xdata()[event.ind][0]
         ydata = event.artist.get_ydata()[event.ind][0]
-        for x in self.point:
-            if event.artist == x:
+        for k, v in self.point.items():
+            if event.artist == v:
                 if self.clickObj_data is None:
-                    self.clickObj_data, = self.ax_data.plot(xdata, ydata, '*', markersize=15, mew=0)
+                    self.clickObj_data, = self.ax_data.plot(xdata, ydata, '*', markersize=10, mew=0)
                 else:
                     self.clickObj_data.set_data(xdata, ydata)
-
-                self.clear_data_annotate()
-
                 str_datay = str(round(ydata, 2))
+                self.clear_data_annotate()
                 self.annotate_data = self.ax_data.annotate(str_datay, xy=(xdata, ydata))
                 break
+        self.draw()
 
     def clear_data_annotate(self):
         if self.annotate_data is not None:
             self.annotate_data.remove()
             self.annotate_data = None
+
+    def clear_data_starpoint(self):
         if self.clickObj_data is not None:
             self.clickObj_data.remove()
             self.clickObj_data = None
+
 
 
 class MplCanvasWrapper(QtGui.QWidget):
@@ -179,10 +185,11 @@ class MplCanvasWrapper(QtGui.QWidget):
         self.canvas.cid = self.canvas.fig.canvas.mpl_connect('pick_event', self.canvas.onclick)
         self.host.cap_data.signal_getrealtimedata.connect(self.displayrealtimedata)
         self.host.cap_data.signal_gethistorydata.connect(self.displayrealhistorydata)
+        self.canvas.cid = self.canvas.fig.canvas.mpl_connect('pick_event', self.canvas.onclick)
 
     def startPlot(self):
-        if self.canvas.cid is not None:
-            self.canvas.fig.canvas.mpl_disconnect(self.canvas.cid)
+        self.canvas.clear_data_annotate()
+        self.canvas.clear_data_starpoint()
         for x in self.host.cap_data.datalist:
             self.canvas.curve[x['device']] = None
             self.canvas.point[x['device']] = None
@@ -192,7 +199,6 @@ class MplCanvasWrapper(QtGui.QWidget):
         self.host.generating = True
 
     def pausePlot(self):
-        self.canvas.cid = self.canvas.fig.canvas.mpl_connect('pick_event', self.canvas.onclick)
         self.host.generating = False
 
     def gethistorydata(self, path):
@@ -202,12 +208,12 @@ class MplCanvasWrapper(QtGui.QWidget):
     def displayrealtimedata(self, datalist):
         self.canvas.plot_realtime(datalist, self.counter)
         # if self.counter >= MAXCOUNTER:
-        #     for x in datalist:
-        #         if x['enabled']:
-        #             x['datax'].pop(0)
-        #             x['datay'].pop(0)
+        #      for x in datalist:
+        #          if x['enabled']:
+        #              x['datax'].pop(0)
+        #              x['datay'].pop(0)
         # else:
-        #     self.counter += 1
+        #      self.counter += 1
 
     @QtCore.pyqtSlot(list)
     def displayrealhistorydata(self, datalist):

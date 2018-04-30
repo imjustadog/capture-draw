@@ -9,6 +9,7 @@ class PCIeHost():
     def __init__(self):
         self.cap_data = GetData()
         self.__exit = False
+        self.generating = True
 
     def startthread(self):
         self.__exit = False
@@ -39,6 +40,9 @@ class PCIeHost():
                 self.cap_data.datalist[0]['datax'].append(x)
                 self.cap_data.datalist[1]['datax'].append(x)
                 x = x + 1
+                if x > 500:
+                    break
             fb.close()
-            self.cap_data.signal_realtimedata_emitter()
-            time.sleep(100)
+            if self.generating:
+                self.cap_data.signal_realtimedata_emitter()
+            time.sleep(1)
